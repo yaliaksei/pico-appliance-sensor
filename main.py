@@ -2,6 +2,7 @@ from machine import Pin
 import time
 import urequests as requests
 import network
+import socket
 
 # Initialize GPIO 16 as an input pin for the vibration sensor
 vibration_sensor = Pin(16, Pin.IN)
@@ -13,23 +14,22 @@ led = Pin("LED", Pin.OUT)
 start_notification_flag = True
 end_notification_flag = False
 
-# loop pause
 sleep_delay = 0.1
 
-# 1 minutes monitor window
-sensor_window = 1 * 60 * 10
-sensor_events = [0] * sensor_window
+# 1 minute activity window initialized with '0'
+activity_window_size = 1 * 60 * 10
+activity_window = [0] * activity_window_size
 
-# notification threshold within window
+# 15 minutes silence window initialized with '1'
+silence_window_size = 15 * 60 * 10
+silence_window = [1] * silence_window
+
+# notification threshold
 notification_threshold = 20
 
 # connect to WiFi
-ssid = "<WIFI-SID>"
-password = "<WIFI-PASSWORD>"
-
-# notification URL
-# see https://ntfy.sh how to setup one
-notification_url = "<notification_url>"
+ssid = 'SSID'
+password = 'PASSWORD'
 
 wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
@@ -37,39 +37,49 @@ wlan.connect(ssid, password)
 
 # Continuously check the vibration sensor's state
 while True:
-    # If the sensor detects vibration (value is 1), print a message
+    # If the sensor detects vibration (value is 1), update activity and silence windows
     if vibration_sensor.value() == 1:
         
-        # blink
-        led.toggle()
+        # turn led on
+        led.value(1)
 
-        # every vibration cycle detected adds 1 into monitoring window
-        # and pop out value from the other side of the list
-        sensor_events.pop(0)
-        sensor_events.append(1)
+        # every vibration detected adds 1 into window
+        activity_window.pop(0)
+        activity_window.append(1)
+        
+        # also, update silence window
+        silence_window.pop(0)
+        silence_window.append(1)
 
-        print("Vibration detected! Total events " + str(sum(sensor_events)))
+        print("Vibration detected! Total events " + str(sum(activity_window)))
 
         # send notification if 
-        if sum(sensor_events) > notification_threshold and start_notification_flag:
+        if sum(activity_window) > notification_threshold and start_notification_flag:
+            print('Cycle started..')
             print('Send start notification')
-            requests.post(notification_url, data = "Washing cycle started!")
+            requests.post("https://ntfy.sh/<actual_url>", data = "Washing cycle started!")
             start_notification_flag = False
             end_notification_flag = True
 
     # If no vibration is detected, print idle message
     else:
-        print("...")
+        print("No vibration. Total vibration events " + str(sum(activity_window)))
+        
+        # turn led off
+        led.value(0)
 
-        # every silent cycle detected adds 0 into monitoring window
-        # and pop out value from the other side of the list
-        sensor_events.pop(0)
-        sensor_events.append(0)
+        activity_window.pop(0)
+        activity_window.append(0)
+        
+        # also, update silence window
+        silence_window.pop(0)
+        silence_window.append(0)
 
         # if no activity detected, send notification about washing program stop
-        if sum(sensor_events) == 0 and end_notification_flag:
+        if sum(silence_window) < 5 and end_notification_flag:
+            print('Cycle ended..')
             print('Send end notification')
-            requests.post(notification_url, data = "Washing cycle ended!")
+            requests.post("https://ntfy.sh/<actual_url>", data = "Washing cycle ended!")
             start_notification_flag = True
             end_notification_flag = False
 
