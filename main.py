@@ -22,7 +22,7 @@ activity_window = [0] * activity_window_size
 
 # 15 minutes silence window initialized with '1'
 silence_window_size = 15 * 60 * 10
-silence_window = [1] * silence_window
+silence_window = [1] * silence_window_size
 
 # notification threshold
 notification_threshold = 20
